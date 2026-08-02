@@ -17,5 +17,9 @@ services:
       - NOTION_DATABASE_ID=${NOTION_DATABASE_ID}
       - NOTION_DATA_SOURCE_ID=${NOTION_DATA_SOURCE_ID}
       - SITE_URL=${SITE_URL:-https://thilanhewage.com}
-    ports:
-      - "3000:3000"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
