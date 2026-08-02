@@ -51,14 +51,7 @@ Built the v1 skeleton for thilanhewage.com per `docs/SPEC-digest-launch-v1.md` a
   `next build` also confirmed this: compiles and type-checks cleanly, fails exactly at Notion data
   collection for `/digest/[date]`, nowhere else.
 
-**Blocked / needs Casper:**
-- **Notion integration + key.** Creating a Notion integration and sharing a database with it are
-  Notion-web-UI-only actions (`notion.so/my-integrations` → Connections) — no tool available here can
-  do either. Per the spec: create a new read-only integration named something like "thilanhewage.com",
-  share it with 🔎 Research Digests, then either paste the Internal Integration Secret into
-  `.env.local`'s `NOTION_API_KEY` yourself or hand it to me. Nothing past this point (`next build`
-  succeeding, Docker build+run against live data, `/digest` and `/rss.xml` smoke tests, RSS validation)
-  can be verified without it.
+**Still needed:**
 - **No browser/screenshot tool in this environment.** `impeccable`'s live critique loop and a Playwright
   smoke test both need one, and neither Playwright nor a Chrome DevTools MCP is wired in here. The a11y
   contrast pass was done by direct computation instead (see above), but visual QA (does the type scale
@@ -67,3 +60,44 @@ Built the v1 skeleton for thilanhewage.com per `docs/SPEC-digest-launch-v1.md` a
 
 **Not done this session (by design, per spec's "explicitly not doing" list):** no Hetzner deploy, no
 redirect logic, no real `/about` or `/posts` content.
+
+## 2026-08-02 — Live verification (Notion key provided)
+
+Casper supplied the `thilanhewage.com` integration's `NOTION_API_KEY` in `.env.local`. Completed the
+rest of the release checklist against live data.
+
+- `next build` against live Notion: compiles, type-checks, and prerenders cleanly — `/`, `/about`,
+  `/posts`, `/digest`, `/rss.xml` static, `/digest/[date]` SSG across 16 published digests
+  (`2026-07-15` through `2026-08-02`).
+- `docker compose --env-file .env.local build` + `up`: image builds with the Notion build `ARG`s and
+  starts, but **every route 500'd** (including the fully-static `/` and the auto-generated 404 page),
+  with nothing printed to `docker logs`. Root-caused by comparing a local `node .next/standalone/server.js`
+  run (worked fine, same build output) against the container (broken) — the only material difference
+  was `HOSTNAME`. Docker auto-injects `HOSTNAME=<container-id>` into every container's environment, and
+  Next's standalone `server.js` binds to *that* value instead of all interfaces when it's set, so the
+  server was only listening on the container's internal bridge IP (confirmed: `wget localhost:3000`
+  failed with connection-refused from *inside* the same container). Fixed with `ENV HOSTNAME=0.0.0.0`
+  in the Dockerfile's runtime stage, which takes precedence over Docker's auto-injected value — this is
+  the same fix Next's own official Docker example uses, for the same reason.
+- Full smoke test against the running container, all against live data: `/` `/about` `/posts` `/digest`
+  `/rss.xml` `/digest/2026-08-02` all 200; an unknown path 404s correctly (not 500 — confirms the fix
+  didn't just paper over routing). `/rss.xml` parses as well-formed XML (`xml.dom.minidom`), 15 items,
+  `<rss version="2.0">` root, correct entity-escaping (including digests whose own content contains
+  literal `<b>` text from an older authoring template — rendered as `&lt;b&gt;`, not interpreted as
+  markup).
+- While checking RSS output, noticed most excerpts were just the callout's label text ("Executive
+  signal:") with no actual content. Root cause: the digest template's summary callout holds its real
+  content in child bullet blocks, not the callout's own rich text — `DigestBody`'s article renderer
+  already recursed into `callout.children` correctly, but `lib/digest-excerpt.ts`'s `excerptFor()` only
+  read the callout's own text. Fixed by preferring the joined text of the callout's bulleted/numbered
+  children when present, falling back to the callout's own text otherwise. Re-verified: RSS descriptions
+  and card-grid excerpts now show real digest content ("Adobe Campaign Classic shipped a CVSS 10
+  patch…") instead of a bare label.
+- Theme toggle: verified the mechanism by inspecting the rendered HTML (pre-hydration script present in
+  `<head>`, correct `aria-pressed`/`aria-label`, `useSyncExternalStore` wiring) — actual click-and-reload
+  persistence still needs a human check or a browser tool, per the still-open item above.
+
+Both bugs found this pass (HOSTNAME binding, excerpt-not-descending-into-callout-children) were real,
+would have shipped silently, and only surfaced because of the "real Docker build + container run
+against live Notion data" step in the verification bar — exactly the kind of thing that check exists
+to catch.

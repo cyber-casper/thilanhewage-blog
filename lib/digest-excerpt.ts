@@ -1,10 +1,24 @@
 import type { NotionBlock } from "./notion/blocks";
 import { plainText } from "./notion/blocks";
 
+function listItemText(block: NotionBlock): string {
+  if (block.type === "bulleted_list_item") return plainText(block.bulleted_list_item.rich_text);
+  if (block.type === "numbered_list_item") return plainText(block.numbered_list_item.rich_text);
+  return "";
+}
+
 function blockText(block: NotionBlock): string {
   switch (block.type) {
-    case "callout":
-      return plainText(block.callout.rich_text);
+    case "callout": {
+      // The callout's own text is often just a label ("Executive signal:")
+      // with the real content one level down as bullet children — prefer
+      // those when present, the same way the article body renders them.
+      const bulletText = (block.children ?? [])
+        .map(listItemText)
+        .filter(Boolean)
+        .join(" ");
+      return bulletText || plainText(block.callout.rich_text);
+    }
     case "paragraph":
       return plainText(block.paragraph.rich_text);
     default:

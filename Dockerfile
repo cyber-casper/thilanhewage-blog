@@ -34,6 +34,16 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Docker injects HOSTNAME=<container-id> into every container's environment,
+# and Next's standalone server.js binds to *that* address instead of all
+# interfaces when HOSTNAME is set — so every request 500s (or, from inside
+# the container, connection-refuses) because the server is only listening on
+# the container's internal bridge IP, never on localhost or the published
+# port's target interface. Overriding it here is the documented fix (Next's
+# own Docker example does the same) and takes precedence over Docker's
+# auto-injected value since this ENV is set after the base image's default.
+ENV HOSTNAME=0.0.0.0
+
 RUN addgroup -S thilanhewage && adduser -S thilanhewage -G thilanhewage
 
 # .next/standalone already contains a pruned node_modules with just the
