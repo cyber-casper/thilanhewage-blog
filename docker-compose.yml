@@ -1,0 +1,21 @@
+services:
+  thilanhewage-blog:
+    build:
+      context: .
+      args:
+        # Needed at build time too — see the Dockerfile's build stage.
+        NOTION_API_KEY: ${NOTION_API_KEY}
+        NOTION_DATABASE_ID: ${NOTION_DATABASE_ID}
+        NOTION_DATA_SOURCE_ID: ${NOTION_DATA_SOURCE_ID}
+        SITE_URL: ${SITE_URL:-https://thilanhewage.com}
+    container_name: thilanhewage-blog
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID}
+      - NOTION_DATA_SOURCE_ID=${NOTION_DATA_SOURCE_ID}
+      - SITE_URL=${SITE_URL:-https://thilanhewage.com}
+    ports:
+      - "3000:3000"
