@@ -101,3 +101,42 @@ Both bugs found this pass (HOSTNAME binding, excerpt-not-descending-into-callout
 would have shipped silently, and only surfaced because of the "real Docker build + container run
 against live Notion data" step in the verification bar — exactly the kind of thing that check exists
 to catch.
+
+## 2026-08-04 — About page copy: verify and ship
+
+`app/about/page.tsx` content was already written (replacing the placeholder) per
+`docs/CLAUDE_CODE_PROMPT_about-update.md`; this pass verified and shipped it without rewriting the
+copy, per the prompt's explicit scope.
+
+- Pre-flight `git status` turned up more dirty state than the prompt expected: an untracked
+  `docs/SPEC-remove-digest-hexorbit-v1.md` (a draft spec for the separate `hexorbit-blog` repo that
+  had landed in this one by mistake), `.vscode/extensions.json`, and `graphify-out/` (expected — this
+  repo's `AGENTS.md` treats a dirty knowledge graph as normal). Flagged to Casper per the prompt's
+  explicit "stop if anything else is dirty" instruction rather than guessing; confirmed scope
+  (misplaced spec file deleted, draft doc included in the commit, `.vscode/` left alone) before
+  proceeding.
+- `tsc --noEmit` hit the exact pre-existing `.next/types/cache-life.d 2.ts` conflict the prompt
+  warned about. `rm -rf .next` + re-run came back clean — confirmed stale generated types, not caused
+  by the about-page change.
+- `eslint` clean. `next build` succeeded in full, including the live Notion-backed `/digest/[date]`
+  routes (23 static pages).
+- **Closed the "no browser/screenshot tool in this environment" gap** noted in both 2026-08-02
+  entries: headless Google Chrome is available locally. `chromium-cli` and Playwright aren't
+  installed, and `--blink-settings=preferredColorScheme` (the old flag-based way to force
+  light/dark for a screenshot) is dead in this Chrome build — it silently no-ops. Drove Chrome
+  directly over the DevTools Protocol instead (`--remote-debugging-port`, raw `WebSocket` from Node,
+  no new dependency installed): `Emulation.setEmulatedMedia` with a `prefers-color-scheme` feature
+  correctly forces the theme before `Page.navigate`, then `Page.captureScreenshot`. Confirmed via a
+  minimal `data:` URL test page that the old flag really does nothing on this Chrome version before
+  switching approaches, rather than assuming the null result meant dark mode itself was broken.
+- Screenshotted `/about` in both themes: renders correctly, matches the rest of the site's nav/footer
+  chrome, theme toggle icon reflects state correctly in both. No new CSS needed or added — the page
+  reuses `page-header`/`page-lede`/`digest-body` only.
+- Contrast: recomputed WCAG ratios for the `page-lede` muted text (the most contrast-risky token pair
+  on this page) directly from `--color-fg-muted`/`--color-bg` — 6.57:1 light, 7.83:1 dark, both clear
+  the 4.5:1 AA bar with margin, consistent with the token-level pass from the initial scaffold. Body
+  text uses the higher-contrast `--color-fg` token, so it clears by an even wider margin.
+  `prefers-reduced-motion` unaffected — this page has no motion and the diff touches no shared CSS/JS.
+- Spot-checked `/`, `/posts`, `/digest` still 200 — no regression elsewhere.
+- Shipped as one `feat(about)` commit, opened as a PR against `main` for Casper's review — not
+  merged. No deploy this pass, per the prompt's explicit scope.
